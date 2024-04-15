@@ -55,11 +55,17 @@ sword --> [that].
 
 % most of this follows Simply Logical, Chapter 7
 sentence1(C) --> determiner(N,M1,M2,C),noun(N,M1),verb_phrase(N,M2).
+sentence1(C) --> determiner(N,M1,X=>not(H),C),noun(N,M1),verb_phrase(N,not(X=>H)).
 sentence1([(L:-true)]) --> proper_noun(N,X),verb_phrase(N,X=>L).
+sentence1([(not(L):-true)]) --> proper_noun(N,X),verb_phrase(N,not(X=>L)).
 
 verb_phrase(s,M) --> [is],property(s,M).
+verb_phrase(s,not(M)) --> [is,not],property(s,M).
 verb_phrase(p,M) --> [are],property(p,M).
+verb_phrase(p,not(M)) --> [are,not],property(p,M).
 verb_phrase(N,M) --> iverb(N,M).
+verb_phrase(s,not(M)) --> [does,not],iverb(p,M).
+verb_phrase(p,not(M)) --> [do,not],iverb(p,M).
 
 property(N,M) --> adjective(N,M).
 property(s,M) --> [a],noun(s,M).
@@ -84,7 +90,9 @@ qword --> [].
 
 question1(Q) --> [who],verb_phrase(s,_X=>Q).
 question1(Q) --> [is], proper_noun(N,X),property(N,X=>Q).
+question1(not(Q)) --> [is], proper_noun(N,X),[not],property(N,X=>Q).
 question1(Q) --> [does],proper_noun(_,X),verb_phrase(_,X=>Q).
+question1(not(Q)) --> [does],proper_noun(_,X),[not],verb_phrase(_,X=>Q).
 %question1((Q1,Q2)) --> [are,some],noun(p,sk=>Q1),
 %					  property(p,sk=>Q2).
 
