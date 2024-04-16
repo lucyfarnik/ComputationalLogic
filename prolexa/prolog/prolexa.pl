@@ -29,6 +29,7 @@ stored_rule(1,[(human(peter):-true)]).
 prolexa_cli:-
 	read(Input),
 	( Input=stop -> true
+	; Input=halt -> halt
 	; otherwise ->
 		handle_utterance(1,Input,Output),
 		writeln(Output),
