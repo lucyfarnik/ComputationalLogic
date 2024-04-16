@@ -1,256 +1,435 @@
-[![Read Assignment Description](https://img.shields.io/badge/assignment-description-blue)](assignment.md)  
+# Report for Computational Logic for Artificial Intelligence Coursework
+Open this notebook for a demo of this codebase:
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/simply-logical/ComputationalLogic/blob/prolexa-plus/Prolexa_Plus_Demo_Notebook.ipynb)
+# TODO create a colab
 
-This repository is provided for general use and as the basis for the assignment for *Computational Logic for Artificial Intelligence* (COMSM0022). 
-CDT students taking the assignment should clone this repository. 
-The two buttons above give more details about the assignment, and enable running the Prolexa assistant in the browser using Google Colab. 
-The rest of this page provides a bit more details about what the code can do, how it can be run from the command line, and how it can be integrated with an Amazon Alexa device. 
+For a description of Prolexa, see the [original repository](https://github.com/simply-logical/ComputationalLogic).
 
-# Prolexa #
-This repository contains Prolog code for a simple question-answering assistant.
-The top-level module is `prolexa/prolog/prolexa.pl`, which can either be run in
-the command line or with speech input and output through the
-[alexa developer console](https://developer.amazon.com/alexa/console/ask).
+This repository contains the code extending Prolexa to handle negation and existential quantification.
+The `multi-meaning` branch is a work in progress -- it aims to extend Prolexa further
+by adding complex conjunctions and disjuctions.
 
-The heavy lifting is done in `prolexa/prolog/prolexa_grammar.pl`, which defines
-DCG rules for sentences (that are added to the knowledge base if they don't
-already follow), questions (that are answered if possible), and commands (e.g.,
-explain why something follows); and `prolexa/prolog/prolexa_engine.pl`, which
-implements reasoning by means of meta-interpreters.
+## Negation
+Prolexa can now handle reasoning such as
+> donald is not happy; every teacher is happy; therefore donald is not a teacher
 
-Also included are `prolexa/prolog/nl_shell.pl`, which is taken verbatim from
-Chapter 7 of *Simply Logical*, and an extended version
-`prolexa/prolog/nl_shell2.pl`, which formed the basis for the *prolexa* code.
+This is implemented using the new `not()` predicate, for instance "donald is not happy" is stored as `(not(happy(donald)):-true)`.
 
-The code has been tested with [SWI Prolog](https://www.swi-prolog.org) versions
-7.6.0, 8.0.3 and 8.2.2.
+The following clauses were added to the grammar to make this work:
+```prolog
+pred(teacher, 1,[n/teacher]).
+pred(happy,   1,[a/happy]).
+proper_noun(s,donald) --> [donald].
 
-## Command-line interface ##
-(The code is executed from the `prolexa/prolog` directory.)
+sentence1(C) --> determiner(N,M1,X=>not(H),C),noun(N,M1),verb_phrase(N,not(X=>H)).
+sentence1([(not(L):-true)]) --> proper_noun(N,X),verb_phrase(N,not(X=>L)).
 
-```
-% swipl prolexa.pl
-Welcome to SWI-Prolog (threaded, 64 bits, version 8.0.3)
-SWI-Prolog comes with ABSOLUTELY NO WARRANTY. This is free software.
-Please run ?- license. for legal details.
+verb_phrase(s,not(M)) --> [is,not],property(s,M).
+verb_phrase(p,not(M)) --> [are,not],property(p,M).
+verb_phrase(s,not(M)) --> [does,not],iverb(p,M).
+verb_phrase(p,not(M)) --> [do,not],iverb(p,M).
 
-For online help and background, visit http://www.swi-prolog.org
-For built-in help, use ?- help(Topic). or ?- apropos(Word).
-
-?- prolexa_cli.
-prolexa> "Tell me everything you know".
-*** utterance(Tell me everything you know)
-*** goal(all_rules(_7210))
-*** answer(every human is mortal. peter is human)
-every human is mortal. peter is human
-prolexa> "Peter is mortal".
-*** utterance(Peter is mortal)
-*** rule([(mortal(peter):-true)])
-*** answer(I already knew that Peter is mortal)
-I already knew that Peter is mortal
-prolexa> "Explain why Peter is mortal".
-*** utterance(Explain why Peter is mortal)
-*** goal(explain_question(mortal(peter),_8846,_8834))
-*** answer(peter is human; every human is mortal; therefore peter is mortal)
-peter is human; every human is mortal; therefore peter is mortal
+question1(not(Q)) --> [is], proper_noun(N,X),[not],property(N,X=>Q).
+question1(not(Q)) --> [does],proper_noun(_,X),[not],verb_phrase(_,X=>Q).
 ```
 
----
-
-## Amazon Alexa and Prolog integration ##
-Follow the steps below if you want to use the Amazon Alexa speech to text and
-text to speech facilities.
-This requires an HTTP interface that is exposed to the web, for which we use
-[Heroku](http://heroku.com).
-
-### Generating intent json for Alexa ###
+This was complemented by adding modus tollens to `prolexa_engine`:
+```prolog
+prove_rb(not(A),Rulebase,P0,P) :- % modus tollens
+	find_clause((B:-A),Rule,Rulebase),
+	prove_rb(not(B),Rulebase,[p(A,Rule)|P0],P).
 ```
-swipl -g "mk_prolexa_intents, halt." prolexa.pl
-```
-The intents are found in `prolexa_intents.json`. You can copy and paste the
-contents of this file while building your skill on the
-[alexa developer console](https://developer.amazon.com/alexa/console/ask).
+## Existential quantification
+Prolexa can do reasoning such as
+> every genius wins; some humans are geniuses; therefore some humans win
 
+The implementation of existential quantification is based on Skolemisation,
+explained in [Chapter 2.5 of Simply Logical textbook](https://book.simply-logical.space/src/text/1_part_i/2.5.html).
+"some humans are geniuses" gets translated to `(human(sk):-true),(genius(sk):-true)`,
+where `sk` is a Skolem constant.
 
-### Localhost workflow (Docker) ###
-To build:
-```
-docker build . -t prolexa
-```
+This required uncommenting out the following lines in `prolexa_grammar`:
+```prolog
+determiner(p,X=>B,X=>H,[(H:-B)]) --> [].
+determiner(p, sk=>H1, sk=>H2, [(H1:-true),(H2 :- true)]) -->[some].
 
-To run:
+question1((Q1,Q2)) --> [are,some],noun(p,sk=>Q1), property(p,sk=>Q2).
 ```
-docker run -it -p 4000:4000 prolexa
-```
+as well as adding the following lines:
+```prolog
+pred(genius,  1,[n/genius]).
 
-To test the server:
-```
-curl -v POST http://localhost:4000/prolexa -d @testjson --header "Content-Type: application/json"
-```
+% most of this clause is already in the original codebase
+noun_s2p(Noun_s,Noun_p):-
+	( Noun_s=woman -> Noun_p=women
+	; Noun_s=man -> Noun_p=men
+	; Noun_s=genius -> Noun_p=geniuses % I only added this line
+	; atom_concat(Noun_s,s,Noun_p)
+	).
 
-### Heroku workflow ###
-#### Initial setup ####
-Prerequisites:
+question1((Q1,Q2)) --> [do,some],noun(p,sk=>Q1), verb_phrase(p,sk=>Q2).
 
-- Docker app running in the background.
-- Installed Heroku CLI (`brew install heroku/brew/heroku` on MacOS).
-
----
-
-To see the status of your Heroku webapp use
-```
-heroku logs
+command(g(explain_question((Q1,Q2),_,Answer),Answer)) --> [explain,why],sentence1([(Q1:-true),(Q2:-true)]).
 ```
 
-in the `prolexa` directory.
-
----
-
-1. Clone this repository
-    ```
-    git clone git@github.com:So-Cool/prolexa.git
-    cd prolexa
-    ```
-
-2. Login to Heroku
-    ```
-    heroku login
-    ```
-
-3. Add Heroku remote
-    ```
-    heroku git:remote -a prolexa
-    ```
-
-#### Development workflow ####
-1. Before you start open your local copy of Prolexa and login to Heroku
-    ```
-    cd prolexa
-    heroku container:login
-    ```
-
-2. Change local files to your liking
-3. Once you're done push them to Heroku
-    ```
-    heroku container:push web
-    heroku container:release web
-    ```
-
-4. Test your skill and repeat steps *2.* and *3.* if necessary
-5. Once you're done commit all the changes and push them to GitHub
-    ```
-    git commit -am "My commit message"
-    git push origin master
-    ```
-
----
-
-# Prolexa Plus #
-Prolexa Plus is an extension to Prolexa which uses NLTK and Flair for part-of-speech tagging of nouns, verbs 
-and other words that are not currently in Prolexa's lexicon. It was implemented by 
-[Gavin Leech](https://github.com/g-leech) and [Dan Whettam](https://github.com/DWhettam)
-from the CDT19 cohort.
-
-```
-% python prolexa/prolexa_plus.py
-2020-11-10 18:33:12,559 loading file /Users/cspaf/.flair/models/en-pos-ontonotes-v0.5.pt
-Hello! I'm ProlexaPlus! Tell me anything, ask me anything.
-> tell me about Kacper
-*** utterance(tell me about Kacper)
-*** goal(all_answers(kacper,_60700))
-*** answer(I know nothing about kacper)
-I know nothing about kacper
-> Kacper is a postdoc
-*** utterance(Kacper is a postdoc)
-*** rule([(postdoc(kacper):-true)])
-*** answer(I will remember that Kacper is a postdoc)
-I will remember that Kacper is a postdoc
-> every postdoc is busy
-*** utterance(every postdoc is busy)
-*** rule([(busy(_53392):-postdoc(_53392))])
-*** answer(I will remember that every postdoc is busy)
-I will remember that every postdoc is busy
-> Kacper is busy
-*** utterance(Kacper is busy)
-*** rule([(busy(kacper):-true)])
-*** answer(I already knew that Kacper is busy)
-I already knew that Kacper is busy
-> explain why Kacper is busy
-*** utterance(explain why Kacper is busy)
-*** goal(explain_question(busy(kacper),_3046,_2824))
-*** answer(kacper is a postdoc; every postdoc is busy; therefore kacper is busy)
-kacper is a postdoc; every postdoc is busy; therefore kacper is busy
+Making this work with `prolexa_engine` required adding support for a sentence
+being translated into 2 conjunctive clauses. First, this meant extending
+`prove_rb` with the following code, which simply states that to prove a conjunction,
+one must prove both its parts, and that the proof of the conjunction simply consists
+of the combination of the proofs required for each part:
+```prolog
+prove_rb((A,B),Rulebase,P0,P):-!,
+	prove_rb(A,Rulebase,P0,P1),
+	prove_rb(B,Rulebase,P1,P).
 ```
 
-Prolexa Plus requires Python 3.6+ and SWI Prolog version 7.6.0+.
-Using a Python virtual environment is advised.
-Since the Prolog<->Python bridge is quite fragile, you should consider using:
-
-* *Windows Subsystem for Linux* if you are on Windows,
-* *Ubuntu Linux*,
-* *MacOS*, or
-* the provided *Docker image* (see below)
-
-to minimise potential issues.
-For more information on how to set up `pyswip` see:
-
-* <https://github.com/yuce/pyswip/blob/master/INSTALL.md> and
-* <https://github.com/yuce/pyswip>.
-
-## Installation ##
-### `pip install` ###
-This installation approach is recommended.
-The installation script may take a moment when processing the Prolexa package
-since language models need to be downloaded (which is achieved by automatically
-executing the `prolexa/setup_models.py` script) -- the
-`Running setup.py install for prolexa ... /` step.
-
-To install execute
+Next, it was necessary to extend `find_clause` to enable it to match clauses
+like `human(sk):-X` with rules like `[(human(sk):-true),(genius(sk):-true)]`:
+```prolog
+find_clause(Clause,[Rule1,Rule2],[[Rule1,Rule2]|_Rules]):-
+	copy_term(Rule1,Clause) ; copy_term(Rule2,Clause).
 ```
-pip install -e .
+
+Lastly, I also modified `explain_question` to take into account the fact that
+a query can be conjunctive.
+
+```prolog
+explain_question(Query,SessionId,Answer):-
+	findall(R,prolexa:stored_rule(SessionId,R),Rulebase),
+	( prove_rb(Query,Rulebase,[],Proof) ->
+		maplist(pstep2message,Proof,Msg),
+		(
+			Query = (Q1,Q2), phrase(sentence1([(Q1:-true),(Q2:-true)]),L)
+			; Query \= (_,_), phrase(sentence1([(Query:-true)]),L)
+		),
+		atomic_list_concat([therefore|L]," ",Last),
+		append(Msg,[Last],Messages),
+		atomic_list_concat(Messages,"; ",Answer)
+	; Answer = 'Sorry, I don\'t think this is the case'
+	).
 ```
-while in the root directory of this repository.
-The `-e` flag installs an editable version of the package, which allows you to
-edit the source to instantly update the installed version of the package
-(read more
-[here](https://pip.pypa.io/en/stable/reference/pip_install/#install-editable)).
 
-This installation comes with two command line tools:
+### Edge case: repeating statements in proofs
+The modifications of `explain_question` also required dealing with this edge
+case: when proving "some humans win", the `prove_rb` predicate will first
+prove `human(sk)` using the rule "some humans are geniuses"
+(i.e. `[(human(sk):-true),(genius(sk):-true)]`), then prove `win(sk)`
+using the rule "all geniuses win" (i.e. `win(X):-genius(X)`) combined with
+"some humans are geniuses" (i.e.`[(human(sk):-true),(genius(sk):-true)]`).
+Note that "some humans are geniuses" is used twice in the proof, leading to
+reasoning such as
+> some humans are geniuses; every genius wins; some humans are geniuses; therefore some humans win
 
-* `prolexa-plus` -- **launches the Prolexa Plus CLI**, and
-* `prolexa-setup-models` -- downloads `nltk` and `flair` language corpora and
-  models.
+While this is technically sound reasoning, having the same statement appear
+twice is inelegant, which is why I decided to remove duplicates:
+```prolog
+explain_question(Query,SessionId,Answer):-
+	findall(R,prolexa:stored_rule(SessionId,R),Rulebase),
+	( prove_rb(Query,Rulebase,[],Proof) ->
+		maplist(pstep2message,Proof,Msg),
+		remove_duplicates(Msg,MsgNoDups),
+		(
+			Query = (Q1,Q2), phrase(sentence1([(Q1:-true),(Q2:-true)]),L)
+			; Query \= (_,_), phrase(sentence1([(Query:-true)]),L)
+		),
+		atomic_list_concat([therefore|L]," ",Last),
+		append(MsgNoDups,[Last],Messages),
+		atomic_list_concat(Messages,"; ",Answer)
+	; Answer = 'Sorry, I don\'t think this is the case'
+	).
 
-### Executing Source ###
-1. Install Python dependencies
-   ```
-   pip install -r requirements.txt
-   ```
-2. Install language models and data
-   ```
-   python prolexa/setup_models.py
-   ```
-3. Run *Prolexa Plus*
-   ```
-   PYTHONPATH=./ python prolexa/prolexa_plus.py
-   ```
 
-### Docker ###
-Instead of a local install, it is possible to run *Prolexa Plus* with the
-designated Docker image.
-
-1. Build the *Prolexa Plus* Docker image
-   ```
-   docker build -t prolexa-plus -f Dockerfile-prolexa-plus ./
-   ```
-2. Run *Prolexa Plus* via Docker
-   ```
-   docker run -it prolexa-plus
-   ```
-
-## Tests ##
-**Python tests are currently broken.**
-To test the code execute
+remove_duplicates([], []).
+remove_duplicates([H|T], List) :- member(H, T), !, remove_duplicates(T, List).
+remove_duplicates([H|T1], [H|T2]) :- remove_duplicates(T1, T2).
 ```
-python prolexa/tests/test.py
+
+## Work in progress: extending grammar to handle complex conjunctions and disjunctions
+I originally intended to extend Prolexa's reasoning much further by completely
+re-thinking the way `prolexa_grammar` works. I wanted Prolexa to handle arbitrarily
+complex conjunctive and disjunctive statements, for instance:
+> everyone who is either the not the messiah or a very naughty boy is not blessed and not a cheesemaker.
+
+This could be used, among other things, for disjunctive reasoning such as this:
+> every blessed person is either a messiah or a cheesemaker;
+> brian is not a messiah; brian is blessed; therefore, brian is a cheesemaker
+
+In order to do this, I decided to completely refactor much of the code base,
+but got stuck on one particular predicate and decided to abandon these efforts.
+
+![](https://pbs.twimg.com/media/CpIlMEdVUAQlhIW?format=jpg&name=medium)
+
+Nontheless, most of the refactoring is complete and I want to explain my
+approach to it in this section. You can find the code on the
+[`multi-meaning` branch](https://github.com/lucyfarnik/ComputationalLogic/tree/multi-meaning).
+
+### High-level approach
+The core idea here is to refactor the code base such that each sentence
+consists of 2 parts, a noun phrase and a verb phrase, each of which can
+have multiple "meanings". For example "everyone who is a naughty boy
+is not the messiah and is not blessed" has the noun phrase meanings
+`[naughty, boy]` and the verb phrase meanings `[not(messiah), not(blessed)]`.
+Since the noun phrase is universally quantified, this gets translated into
+the clauses `[(not(messiah(X)) :- naughty(X),boy(X)), (not(blessed(X)) :- naughty(X),boy(X))]`.
+Note that this means that a single sentence can encode arbitrarily many clauses.
+
+In order to handle disjunction, we use the fact that $A\implies B\lor C$ is
+equivalent to $(A\land\lnot C\implies B)\land(A\land\lnot B\implies C)$
+(see [Chapter 2.4 of Simply Logical](https://book.simply-logical.space/src/text/1_part_i/2.4.html) for details).
+This meant that a sentence like "every blessed person is either a messiah or a cheesemaker"
+would have the noun phrase meanings `[blessed, person]` and the verb phrase
+meanings `[disjunction(messiah, cheesemaker)]`, which would get translated to
+the clauses `[(messiah(X):-blessed(X),person(X),not(cheesemaker(X))), (cheesemaker(X):-blessed(X),person(X),not(messiah(X)))]`.
+
+### Allowing sentences to encode arbitrarily many meanings
+First, this required modifying the root-level module `prolexa.pl` to
+take into accound sentences whose arguments are lists of arbitrarily many
+clauses. This was done by modifying the part of `handle_utterance` that
+deals with sentences:
+```prolog
+% A. Utterance is a sentence 
+	( phrase(sentence(Rules),UtteranceList),
+	  write_debug(rule(Rules)),
+	  (
+		all_known_rules(Rules,SessionId) -> % A1. All rules are known
+			atomic_list_concat(['I already knew that',Utterance],' ',Answer)
+		; otherwise -> %A2. At least one rule is new
+			store_new_rules(Rules,SessionId),
+			atomic_list_concat(['I will remember that',Utterance],' ',Answer)
+	  )
 ```
+where `all_known_rules` and `store_new_rules` are defined as
+```prolog
+store_new_rules([], _).
+store_new_rules([Rule|Rest], SessionId):-
+	(known_rule([Rule],SessionId) -> true
+	; otherwise -> assertz(prolexa:stored_rule(SessionId,[Rule]))),
+	store_new_rules(Rest, SessionId).
+
+all_known_rules([],_).
+all_known_rules([Rule|Rest],SessionId) :-
+	known_rule([Rule],SessionId), all_known_rules(Rest,SessionId).
+```
+
+### Refactoring sentence structure
+Sentences are now defined simply as
+```prolog
+sentence(Clauses) --> 
+	top_level_noun_phrase(Number, Quantifier, NounPhraseMeanings),
+	verb_phrase(Number, VerbPhraseMeanings),
+	{clauses_to_meanings(Clauses, Quantifier,
+		NounPhraseMeanings, VerbPhraseMeanings)}.
+```
+
+The top-level noun phrase can be either a list of proper nouns, or a determiner
+followed by a regular noun phrase
+```prolog
+% the highest-level noun phrase in the parse tree (the one whose parent is the sentence)
+top_level_noun_phrase(Number, no_quantifier, Meanings) -->
+	proper_nouns(Number, Meanings).
+top_level_noun_phrase(Number, Quantifier, Meanings) -->
+	% IsNounPhraseComplex means that we have to list multiple properties
+	% eg "everyone who is a human and flies" is complex while "every human" isn't
+	determiner(Number, IsNounPhraseComplex, Quantifier),
+	noun_phrase(Number, IsNounPhraseComplex, Meanings).
+
+% may be a single plural noun or multiple of them
+proper_nouns(singular, [Meaning]) --> proper_noun(Meaning).
+proper_nouns(plural, Meanings) --> proper_nouns1(Meanings).
+
+% multiple plural nouns
+proper_nouns1([Meaning, Meaning2]) -->
+	proper_noun(Meaning), [and], proper_noun(Meaning2).
+proper_nouns1([Meaning|Meanings]) -->
+	proper_noun(Meaning), [','], proper_nouns1(Meanings).
+
+determiner(singular, simple, universal_quantifier) --> [every].
+determiner(plural, simple, universal_quantifier) --> [all].
+determiner(singular, complex, universal_quantifier) --> [everyone, who].
+
+% noun_phrase(singular,M) --> [a],noun_phrase(singular,M).
+noun_phrase(Number, simple, [Meaning]) --> noun(Number,Meaning).
+noun_phrase(Number, simple, [Meaning1, Meaning2]) --> 
+	degree, adjective(Meaning1), noun(Number,Meaning2).
+% noun_phrase(Number, simple, not(Meaning)) --> ['non-'], noun(Number, Meaning).
+noun_phrase(Number, complex, Meanings) --> properties(Number, Meanings).
+
+degree --> []|[very]|[vewy]. % for now, this carries no semantics
+```
+
+The verb phrase is simply a list of properties, much like the noun phrase:
+```prolog
+verb_phrase(Number, Meanings) --> properties(Number, Meanings).
+```
+
+Properties can be conjunctively or disjunctively connected (or certain
+combinations of the two):
+```prolog
+properties(Number, Meanings) --> property(Number, Meanings).
+properties(Number, Meanings) --> 
+	property(Number, Meanings1), [and], property(Number, Meanings2),
+	{append(Meanings1, Meanings2, Meanings)}.
+properties(Number, [Meaning|Meanings]) --> 
+	property(Number, [Meaning]), [','], properties(Number, Meanings).
+
+% `property` is defined in a nested way where each layer processes
+% a different part of the sequence
+% note that `property` can have 2 meanings because "a mortal human" is
+% parsed as 1 property even though it has 2 meanings
+% the top-level property predicate processes disjunctions
+property(Number, Meanings) --> property1(Number, Meanings).
+property(Number, [disjunction(Meaning1, Meaning2)]) -->
+	([either] | []), property1(Number, Meaning1), [or], property1(Number, Meaning2).
+
+% property1 processes verbs (incl. the verb "to be")
+property1(Number, [Meaning]) --> iverb(Number, Meaning).
+property1(Number, [NegatedMeaning]) -->
+	verb_negation(Number), iverb(Number, Meaning), {negate(Meaning, NegatedMeaning)}.
+property1(singular, Meanings) --> [is], property2(singular, Meanings).
+property1(plural, Meanings) --> [are], property2(plural, Meanings).
+
+verb_negation(singular) --> [does,not] | ['doesn\'t'].
+verb_negation(plural) --> [do,not] | ['don\'t'].
+
+% property2 processes negation
+property2(Number, Meanings) --> property3(Number, Meanings).
+property2(Number, NegatedMeanings) -->
+	[not], property3(Number, Meanings),
+	{negate_all(Meanings, NegatedMeanings)}.
+
+% property3 fully processes properties which do not include a noun;
+% for properties which do include a noun, it processes "a" or "the"
+property3(_, [Meaning]) --> degree, adjective(Meaning).
+property3(singular, Meanings) --> ([a] | [the]), property4(singular, Meanings).
+property3(plural, Meanings) --> ([] | [the]), property4(plural, Meanings).
+
+% property4 fully processes properties which include a noun
+property4(Number, [Meaning]) --> noun(Number, Meaning).
+property4(Number, [Meaning1, Meaning2]) --> 
+	degree, adjective(Meaning1), noun(Number, Meaning2).
+
+negate(not(X), X).
+negate(X, not(X)).
+
+negate_all([], []).
+negate_all([Meaning|Meanings], [NegatedMeaning|NegatedMeanings]) :-
+	negate(Meaning, NegatedMeaning),
+	negate_all(Meanings, NegatedMeanings).
+```
+
+We define parts of speech similarly to how they are defined
+in the original code base, except we get rid of the `=>` operator:
+```prolog
+adjective(Meaning)		--> [Adj],    {meaning_to_word(Meaning,1,a/Adj)}.
+% adjective(not(M))	--> [Adj_neg],{meaning_to_word(_P,1,a/Adj_pos, M),adj_pos2neg(Adj_pos,Adj_neg)}.
+% adjective(not(M))	--> [Adj_pos],{meaning_to_word(_P,1,a/Adj_neg, M),adj_pos2neg(Adj_pos,Adj_neg)}.
+noun(singular, Meaning)	--> [Noun],   {meaning_to_word(Meaning,1,n/Noun)}.
+noun(plural, Meaning)	--> [Noun_p], {meaning_to_word(Meaning,1,n/Noun), noun_s2p(Noun,Noun_p)}.
+iverb(singular, Meaning)--> [Verb_s], {meaning_to_word(Meaning,1,v/Verb), verb_p2s(Verb,Verb_s)}.
+iverb(plural, Meaning)	--> [Verb],   {meaning_to_word(Meaning,1,v/Verb)}.
+
+meaning_to_word(Meaning,1,Class/Word):-
+	pred(Meaning, 1, Literals),
+	member(Class/Word, Literals).
+```
+
+Lastly, the vocabulary I'm using throughout this section is defined as:
+```prolog
+% unary predicates for adjectives, nouns, and verbs
+pred(messiah, 1,[n/messiah]).
+pred(naughty, 1,[a/naughty]).
+pred(boy,     1,[n/boy]).
+pred(blessed, 1,[a/blessed]).
+pred(cheesemaker, 1, [n/cheesemaker]).
+pred(released, 1,[a/released,a/weleased]).
+
+% proper nouns
+proper_noun(brian) --> [brian]|[bwian].
+proper_noun(roger) --> [roger]|[woger].
+```
+(Note the additional accesibility feature of allowing users with speech
+sound disorders (namely rhotacism) to still use the software, for instance
+"woger is weleased" is correctly interpreted to be the same as "roger is released".)
+
+### Converting between clauses and meanings
+The part of this refactoring which I ultimately did not finish is the predicate
+`clauses_to_meanings`, which expresses the afforementioned relation between clauses,
+noun phrase meanings, and verb phrase meanings.
+
+(Note: I initially tried a different approach to implementing this; this can
+still be found in `prolexa_grammar` and is currently commented out.)
+
+```prolog
+%%% semantic processing %%%
+% converts between Prolog clauses and the meanings of noun phrases and verb phrases
+% usage: clauses_to_meanings(Clauses, Quantifier, NounPhraseMeanings, VerbPhraseMeanings)
+clauses_to_meanings([], _, [], _). % base case: no more noun phrase meanings
+clauses_to_meanings([], _, _, []). % base case: no more verb phrase meanings
+
+clauses_to_meanings([Clause1,Clause2|ClausesRest], no_quantifier, [NounPhraseM],
+					[disjunction(VerbPhraseM1,VerbPhraseM2)|VerbPhraseRest]) :-
+	 % if we have a disjunction, we need to process it separately
+	((nonvar(VerbPhraseM1), nonvar(VerbPhraseM2)) -> !
+	; otherwise -> true),
+	Clause1 = (ClauseHead1:-NegatedClauseHead2),
+	Clause2 = (ClauseHead2:-NegatedClauseHead1),
+	negate(ClauseHead1, NegatedClauseHead1),
+	negate(ClauseHead2, NegatedClauseHead2),
+	univ_with_negation(VerbPhraseM1, NounPhraseM, ClauseHead1),
+	univ_with_negation(VerbPhraseM2, NounPhraseM, ClauseHead2),
+	clauses_to_meanings(ClausesRest, no_quantifier, [NounPhraseM], VerbPhraseRest).
+clauses_to_meanings([Clause|ClausesRest], no_quantifier, [NounPhraseM], [VerbPhraseM|VerbPhraseRest]) :- 
+	Clause = (ClauseHead:-true),
+	univ_with_negation(VerbPhraseM, NounPhraseM, ClauseHead),
+	clauses_to_meanings(ClausesRest, no_quantifier, [NounPhraseM], VerbPhraseRest).
+clauses_to_meanings(Clauses, no_quantifier, [NounPhraseM|NounPhraseRest], VerbPhraseMeanings) :-
+	append(Clauses1, Clauses2, Clauses), %! this clause leads to stack overflow rn
+	clauses_to_meanings(Clauses1, no_quantifier, [NounPhraseM], VerbPhraseMeanings),
+	clauses_to_meanings(Clauses2, no_quantifier, NounPhraseRest, VerbPhraseMeanings).
+
+
+clauses_to_meanings([Clause1, Clause2|ClausesRest], universal_quantifier, NounPhraseMeanings,
+	[disjunction(VerbPhraseM1,VerbPhraseM2)|VerbPhraseRest]) :-
+	 % if we have a disjunction, we need to process it separately
+	((nonvar(VerbPhraseM1), nonvar(VerbPhraseM2)) -> !
+	; otherwise -> true),
+	Clause1 = (ClauseHead1:-(ClauseBody,NegatedClauseHead2)),
+	Clause2 = (ClauseHead2:-(ClauseBody,NegatedClauseHead1)),
+	negate(ClauseHead1, NegatedClauseHead1),
+	negate(ClauseHead2, NegatedClauseHead2),
+	univ_with_negation(VerbPhraseM1, X, ClauseHead1),
+	univ_with_negation(VerbPhraseM2, X, ClauseHead2),
+	conjunction_to_terms(NounPhraseMeanings, ClauseBody, X),
+	clauses_to_meanings(ClausesRest, universal_quantifier, NounPhraseMeanings, VerbPhraseRest).
+clauses_to_meanings([Clause|ClauseRest], universal_quantifier, NounPhraseMeanings, [VerbPhraseM|VerbPhraseRest]) :-
+	Clause = (ClauseHead:-ClauseBody),
+	univ_with_negation(VerbPhraseM, X, ClauseHead),
+	conjunction_to_terms(NounPhraseMeanings, ClauseBody, X),
+	clauses_to_meanings(ClauseRest, universal_quantifier, NounPhraseMeanings, VerbPhraseRest).
+
+% the equivalent of the '(=..)/2' operator except it can also take
+% not(functor) as the first argument
+univ_with_negation(not(Functor), Arg, not(Term)) :-
+	!,
+	Term =.. [Functor, Arg].
+univ_with_negation(Functor, Arg, Term) :-
+	Term =.. [Functor, Arg].
+
+% turn an arbitrarily long conjunction into a list of terms
+% usage: conjunction_to_terms(Meanings, Terms, X)
+% example: conjunction_to_terms([human, flies], [human(X), flies(X)], X)
+conjunction_to_terms([], true, _).
+conjunction_to_terms([Meaning], Term, X) :-
+	!,
+	univ_with_negation(Meaning, X, Term).
+conjunction_to_terms([Meaning|MeaningsRest], Terms, X) :-
+	Terms = (Term,TermsRest),
+	univ_with_negation(Meaning, X, Term),
+	conjunction_to_terms(conjunction(MeaningsRest), TermsRest, X).
+
+```
+
+Ultimately, this ended up being much more complex than anticipated due to a
+mix of insufficient instantiation errors when applying predicates "in the
+other direction", out of memory errors due to issues with the recursion,
+and various other things.
