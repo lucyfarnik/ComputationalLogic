@@ -125,7 +125,7 @@ all_rules(Answer):-
 
 % convert rule to sentence (string)
 rule2message(Rule,Message):-
-	phrase(sentence1(Rule),Sentence),
+	phrase(sentence(Rule),Sentence),
 	atomics_to_string(Sentence," ",Message).
 
 % collect everything that can be proved about a particular Proper Noun

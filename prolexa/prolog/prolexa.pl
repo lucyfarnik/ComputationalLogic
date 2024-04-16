@@ -19,12 +19,11 @@
 
 
 %some intial stored rules
-stored_rule(1,[(mortal(X):-human(X))]).
-stored_rule(1,[(human(peter):-true)]).
-stored_rule(1,[(happy(X):-teacher(X))]).
-stored_rule(1,[(not(happy(donald)):-true)]).
-stored_rule(1,[(human(sk):-true),(genius(sk):-true)]).
-stored_rule(1,[(win(X):-genius(X))]).
+% stored_rule(1,[(mortal(X):-human(X))]).
+% stored_rule(1,[(human(peter):-true)]).
+stored_rule(1,[(not(naughty(X)):-messiah(X))]).
+stored_rule(1,[(naughty(brian):-true)]).
+stored_rule(1,[(released(roger):-true)]).
 
 
 %%% Prolexa Command Line Interface %%%
@@ -32,7 +31,7 @@ stored_rule(1,[(win(X):-genius(X))]).
 % Utterances need to be typed as strings, e.g. "Every human is mortal".
 prolexa_cli:-
 	read(Input),
-	( Input=stop -> true
+	( (Input=stop; Input=quit) -> true
 	; Input=halt -> halt
 	; otherwise ->
 		handle_utterance(1,Input,Output),
@@ -49,12 +48,13 @@ handle_utterance(SessionId,Utterance,Answer):-
 	maplist(string_lower,StringList,StringListLow),	% all lowercase
 	maplist(atom_string,UtteranceList,StringListLow),	% strings to atoms
 % A. Utterance is a sentence 
-	( phrase(sentence(Rule),UtteranceList),
-	  write_debug(rule(Rule)),
-	  ( known_rule(Rule,SessionId) -> % A1. It follows from known rules
+	( phrase(sentence(Rules),UtteranceList),
+	  write_debug(rule(Rules)),
+	  (
+		all_known_rules(Rules,SessionId) -> % A1. All rules are known
 			atomic_list_concat(['I already knew that',Utterance],' ',Answer)
-	  ; otherwise -> % A2. It doesn't follow, so add to stored rules
-			assertz(prolexa:stored_rule(SessionId,Rule)),
+		; otherwise -> %A2. At least one rule is new
+			store_new_rules(Rules,SessionId),
 			atomic_list_concat(['I will remember that',Utterance],' ',Answer)
 	  )
 % B. Utterance is a question that can be answered
@@ -72,6 +72,17 @@ handle_utterance(SessionId,Utterance,Answer):-
 
 write_debug(Atom):-
 	write(user_error,'*** '),writeln(user_error,Atom),flush_output(user_error).
+
+%! TODO: implement a relationship between X and not(X) (incl checking for contradictions when adding new information)
+store_new_rules([], _).
+store_new_rules([Rule|Rest], SessionId):-
+	(known_rule([Rule],SessionId) -> true
+	; otherwise -> assertz(prolexa:stored_rule(SessionId,[Rule]))),
+	store_new_rules(Rest, SessionId).
+
+all_known_rules([],_).
+all_known_rules([Rule|Rest],SessionId) :-
+	known_rule([Rule],SessionId), all_known_rules(Rest,SessionId).
 
 
 %%%%% the stuff below is only relevant if you want to create a voice-driven Alexa skill %%%%%
