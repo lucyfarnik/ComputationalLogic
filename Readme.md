@@ -1,7 +1,6 @@
 # Report for Computational Logic for Artificial Intelligence Coursework
 Open this notebook for a demo of this codebase:
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/simply-logical/ComputationalLogic/blob/prolexa-plus/Prolexa_Plus_Demo_Notebook.ipynb)
-# TODO create a colab
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lucyfarnik/ComputationalLogic/blob/prolexa-plus/Demo.ipynb)
 
 For a description of Prolexa, see the [original repository](https://github.com/simply-logical/ComputationalLogic).
 
