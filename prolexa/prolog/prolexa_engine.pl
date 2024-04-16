@@ -37,9 +37,13 @@ explain_question(Query,SessionId,Answer):-
 	findall(R,prolexa:stored_rule(SessionId,R),Rulebase),
 	( prove_rb(Query,Rulebase,[],Proof) ->
 		maplist(pstep2message,Proof,Msg),
-		phrase(sentence1([(Query:-true)]),L),
+		remove_duplicates(Msg,MsgNoDups),
+		(
+			Query = (Q1,Q2), phrase(sentence1([(Q1:-true),(Q2:-true)]),L)
+			; Query \= (_,_), phrase(sentence1([(Query:-true)]),L)
+		),
 		atomic_list_concat([therefore|L]," ",Last),
-		append(Msg,[Last],Messages),
+		append(MsgNoDups,[Last],Messages),
 		atomic_list_concat(Messages,"; ",Answer)
 	; Answer = 'Sorry, I don\'t think this is the case'
 	).
@@ -51,6 +55,9 @@ pstep2message(n(Fact),Message):-
 	rule2message([(Fact:-true)],FM),
 	atomic_list_concat(['It is not known that',FM]," ",Message).
 
+remove_duplicates([], []).
+remove_duplicates([H|T], List) :- member(H, T), !, remove_duplicates(T, List).
+remove_duplicates([H|T1], [H|T2]) :- remove_duplicates(T1, T2).
 
 %%% test if a rule can be deduced from stored rules %%%
 known_rule([Rule],SessionId):-
@@ -72,6 +79,9 @@ add_body_to_rulebase(A,Rs0,[[(A:-true)]|Rs0]).
 % 3d argument is accumulator for proofs
 prove_rb(true,_Rulebase,P,P):-!.
 prove_rb((A,B),Rulebase,P0,P):-!,
+	prove_rb(A,Rulebase,P0,P1),
+	prove_rb(B,Rulebase,P1,P).
+prove_rb((A,B),Rulebase,P0,P):-!,
 	find_clause((A:-C),Rule,Rulebase),
 	conj_append(C,B,D),
     prove_rb(D,Rulebase,[p((A,B),Rule)|P0],P).
@@ -89,6 +99,9 @@ prove_rb(Q,RB):-
 
 %%% Utilities from nl_shell.pl %%%
 
+find_clause(Clause,[Rule1,Rule2],[[Rule1,Rule2]|_Rules]):-
+	% eg Clause is (human(sk):-X) and Rule is [(human(sk):-X),(mortal(sk):-X)]
+	copy_term(Rule1,Clause) ; copy_term(Rule2,Clause).
 find_clause(Clause,Rule,[Rule|_Rules]):-
 	copy_term(Rule,[Clause]).	% do not instantiate Rule
 find_clause(Clause,Rule,[_Rule|Rules]):-
