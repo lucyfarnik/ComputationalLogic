@@ -27,6 +27,8 @@ pred(bird,    1,[n/bird]).
 %pred(bat,     1,[n/bat]).
 pred(penguin, 1,[n/penguin]).
 pred(sparrow, 1,[n/sparrow]).
+pred(teacher, 1,[n/teacher]).
+pred(happy,   1,[a/happy]).
 pred(fly,     1,[v/fly]).
 
 pred2gr(P,1,C/W,X=>Lit):-
@@ -78,6 +80,7 @@ determiner(p,X=>B,X=>H,[(H:-B)]) --> [all].
 
 proper_noun(s,tweety) --> [tweety].
 proper_noun(s,peter) --> [peter].
+proper_noun(s,donald) --> [donald].
 
 
 %%% questions %%%
