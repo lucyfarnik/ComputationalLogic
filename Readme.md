@@ -1,4 +1,4 @@
-# Report for Computational Logic for Artificial Intelligence Coursework
+# Computational Logic for Artificial Intelligence Coursework
 Open this notebook for a demo of this codebase:
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/lucyfarnik/ComputationalLogic/blob/prolexa-plus/Demo.ipynb)
 
@@ -157,6 +157,7 @@ In order to do this, I decided to completely refactor much of the code base,
 but got stuck on one particular predicate and decided to abandon these efforts.
 
 ![](https://pbs.twimg.com/media/CpIlMEdVUAQlhIW?format=jpg&name=medium)
+(Image source: https://twitter.com/unoservix/status/761712499037044736)
 
 Nontheless, most of the refactoring is complete and I want to explain my
 approach to it in this section. You can find the code on the
